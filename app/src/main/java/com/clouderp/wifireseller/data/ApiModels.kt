@@ -275,3 +275,67 @@ data class SalesRows(
     val data: List<VoucherDto> = emptyList(),
     val total: Int = 0,
 )
+
+@Serializable
+data class LiveMonitorData(
+    @SerialName("refreshed_at") val refreshedAt: String? = null,
+    @SerialName("connected_count") val connectedCount: Int = 0,
+    @SerialName("active_vouchers") val activeVouchers: Int = 0,
+    @SerialName("total_rate_bps") val totalRateBps: Long = 0,
+    @SerialName("total_rate_label") val totalRateLabel: String = "0 kbps",
+    @SerialName("total_bytes_in") val totalBytesIn: Long = 0,
+    @SerialName("total_bytes_out") val totalBytesOut: Long = 0,
+    @SerialName("total_bytes_label") val totalBytesLabel: String = "0 B",
+    val sites: List<LiveSiteRow> = emptyList(),
+    val sessions: List<LiveSessionRow> = emptyList(),
+)
+
+@Serializable
+data class LiveSiteRow(
+    @SerialName("site_id") val siteId: Long? = null,
+    val name: String = "",
+    val connected: Int = 0,
+    @SerialName("total_rate_bps") val totalRateBps: Long = 0,
+    @SerialName("bytes_in") val bytesIn: Long = 0,
+    @SerialName("bytes_out") val bytesOut: Long = 0,
+)
+
+@Serializable
+data class LiveSessionRow(
+    val username: String = "",
+    @SerialName("mac_address") val macAddress: String? = null,
+    @SerialName("ip_address") val ipAddress: String? = null,
+    val uptime: String? = null,
+    @SerialName("idle_time") val idleTime: String? = null,
+    @SerialName("login_by") val loginBy: String? = null,
+    @SerialName("bytes_in") val bytesIn: Long = 0,
+    @SerialName("bytes_out") val bytesOut: Long = 0,
+    @SerialName("bytes_total") val bytesTotal: Long = 0,
+    @SerialName("bytes_total_label") val bytesTotalLabel: String = "0 B",
+    @SerialName("packets_in") val packetsIn: Long? = null,
+    @SerialName("packets_out") val packetsOut: Long? = null,
+    @SerialName("rate_bps") val rateBps: Long = 0,
+    @SerialName("rate_label") val rateLabel: String = "0 kbps",
+    @SerialName("reported_at") val reportedAt: String? = null,
+    @SerialName("is_stale") val isStale: Boolean = false,
+    val site: NamedRef? = null,
+    val voucher: LiveVoucherRef? = null,
+    val plan: LivePlanRef? = null,
+)
+
+@Serializable
+data class LiveVoucherRef(
+    val id: Long? = null,
+    val status: String? = null,
+    val channel: String? = null,
+    @SerialName("expires_at") val expiresAt: String? = null,
+)
+
+@Serializable
+data class LivePlanRef(
+    val id: Long? = null,
+    val name: String? = null,
+    @SerialName("rate_limit") val rateLimit: String? = null,
+    @SerialName("data_limit_label") val dataLimitLabel: String? = null,
+    @SerialName("duration_label") val durationLabel: String? = null,
+)

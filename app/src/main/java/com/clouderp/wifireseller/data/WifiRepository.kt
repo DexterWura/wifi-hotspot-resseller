@@ -23,6 +23,9 @@ class WifiRepository(
 
     suspend fun sales(): SalesData = unwrap { api.wifi.sales() }
 
+    suspend fun live(refresh: Boolean = false): LiveMonitorData =
+        unwrap { api.wifi.live(if (refresh) 1 else null) }
+
     suspend fun sites(): List<SiteDto> = unwrap { api.wifi.sites() }.data
 
     suspend fun site(id: Long): SiteShowResponse = unwrap { api.wifi.site(id) }

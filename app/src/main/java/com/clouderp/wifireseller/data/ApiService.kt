@@ -36,6 +36,9 @@ interface WifiApi {
         @Query("channel") channel: String? = null,
     ): ApiEnvelope<SalesData>
 
+    @GET("api/v1/wifi/live")
+    suspend fun live(@Query("refresh") refresh: Int? = null): ApiEnvelope<LiveMonitorData>
+
     @GET("api/v1/wifi/sites")
     suspend fun sites(): ApiEnvelope<PaginatedSites>
 

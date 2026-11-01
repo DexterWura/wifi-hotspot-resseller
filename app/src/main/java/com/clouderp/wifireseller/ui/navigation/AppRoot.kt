@@ -8,6 +8,7 @@ import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.QrCode
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.ShoppingCart
+import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
@@ -34,6 +35,7 @@ import com.clouderp.wifireseller.data.SessionStore
 import com.clouderp.wifireseller.data.WifiRepository
 import com.clouderp.wifireseller.ui.screens.CompanyPickerScreen
 import com.clouderp.wifireseller.ui.screens.DashboardScreen
+import com.clouderp.wifireseller.ui.screens.LiveMonitorScreen
 import com.clouderp.wifireseller.ui.screens.LoginScreen
 import com.clouderp.wifireseller.ui.screens.PlanFormScreen
 import com.clouderp.wifireseller.ui.screens.PlansScreen
@@ -52,6 +54,7 @@ object Routes {
     const val Companies = "companies"
     const val Home = "home"
     const val Dashboard = "dashboard"
+    const val Live = "live"
     const val Sales = "sales"
     const val Sites = "sites"
     const val SiteCreate = "sites/create"
@@ -171,6 +174,7 @@ private fun HomeShell(
 ) {
     val tabs = listOf(
         TabItem(Routes.Dashboard, "Home", "wifi.dashboard.view", Icons.Default.Dashboard),
+        TabItem(Routes.Live, "Live", "wifi.live.view", Icons.Default.Speed),
         TabItem(Routes.Sell, "Sell", "wifi.vouchers.sell", Icons.Default.ShoppingCart),
         TabItem(Routes.Vouchers, "Codes", "wifi.vouchers.view", Icons.Default.QrCode),
         TabItem(Routes.Sites, "Sites", "wifi.sites.manage", Icons.Default.Place),
@@ -218,12 +222,17 @@ private fun HomeShell(
                     repository = repository,
                     companyName = companyName,
                     bootError = bootError,
+                    canOpenLive = permissions.contains("wifi.live.view"),
                     canOpenSales = permissions.contains("wifi.dashboard.view"),
                     canOpenSettings = permissions.contains("wifi.settings.manage"),
+                    onOpenLive = { navController.navigate(Routes.Live) },
                     onOpenSales = { navController.navigate(Routes.Sales) },
                     onOpenSettings = { navController.navigate(Routes.Settings) },
                     onLogout = onLogout,
                 )
+            }
+            composable(Routes.Live) {
+                LiveMonitorScreen(repository = repository)
             }
             composable(Routes.Sales) {
                 SalesScreen(repository = repository)
