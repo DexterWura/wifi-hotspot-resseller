@@ -6,7 +6,7 @@ Android client for Cloud ERP Wi-Fi Hotspot staff features.
 
 1. Copy `local.properties.example` to `local.properties`.
 2. Set `sdk.dir` to your Android SDK path.
-3. Set `API_BASE_URL` to your Cloud ERP origin (no trailing slash), for example `https://app.example.com` or `http://10.0.2.2` for the emulator talking to XAMPP on the host.
+3. Set `API_BASE_URL` to your Cloud ERP origin (no trailing slash). Production default is `https://companyop.com`. Use `http://10.0.2.2` only for the emulator talking to local XAMPP.
 4. Open the project in Android Studio and sync Gradle.
 5. Run the `app` configuration.
 

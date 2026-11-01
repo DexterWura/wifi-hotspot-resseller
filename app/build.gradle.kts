@@ -14,7 +14,7 @@ val localProps = Properties().apply {
     }
 }
 
-val apiBaseUrl = (localProps.getProperty("API_BASE_URL") ?: "https://example.com")
+val apiBaseUrl = (localProps.getProperty("API_BASE_URL") ?: "https://companyop.com")
     .trim()
     .trimEnd('/')
 
