@@ -1,0 +1,3 @@
+## Copy to local.properties and adjust.
+sdk.dir=C\:\\Users\\dexte\\AppData\\Local\\Android\\Sdk
+API_BASE_URL=https://your-cloud-erp-host.example
