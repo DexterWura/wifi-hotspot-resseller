@@ -18,7 +18,7 @@ interface AuthApi {
 
 interface CompanyApi {
     @GET("api/v1/companies")
-    suspend fun companies(): ApiEnvelope<PaginatedCompanies>
+    suspend fun companies(): ApiEnvelope<List<CompanyDto>>
 }
 
 interface WifiApi {
@@ -34,13 +34,14 @@ interface WifiApi {
         @Query("to") to: String? = null,
         @Query("site_id") siteId: Long? = null,
         @Query("channel") channel: String? = null,
+        @Query("page") page: Int? = null,
     ): ApiEnvelope<SalesData>
 
     @GET("api/v1/wifi/live")
     suspend fun live(@Query("refresh") refresh: Int? = null): ApiEnvelope<LiveMonitorData>
 
     @GET("api/v1/wifi/sites")
-    suspend fun sites(): ApiEnvelope<PaginatedSites>
+    suspend fun sites(@Query("page") page: Int? = null): ApiEnvelope<PaginatedSites>
 
     @GET("api/v1/wifi/sites/{id}")
     suspend fun site(@Path("id") id: Long): ApiEnvelope<SiteShowResponse>
@@ -54,17 +55,32 @@ interface WifiApi {
     @POST("api/v1/wifi/sites/{id}/rotate-token")
     suspend fun rotateToken(@Path("id") id: Long): ApiEnvelope<SiteCreateResponse>
 
+    @POST("api/v1/wifi/sites/{id}/test-connection")
+    suspend fun testConnection(@Path("id") id: Long): ApiEnvelope<MessageData>
+
+    @POST("api/v1/wifi/sites/{id}/sync")
+    suspend fun syncSite(@Path("id") id: Long): ApiEnvelope<MessageData>
+
     @DELETE("api/v1/wifi/sites/{id}")
     suspend fun deleteSite(@Path("id") id: Long): ApiEnvelope<Unit?>
 
     @GET("api/v1/wifi/plans")
-    suspend fun plans(): ApiEnvelope<PlansIndexData>
+    suspend fun plans(@Query("page") page: Int? = null): ApiEnvelope<PlansIndexData>
+
+    @GET("api/v1/wifi/plans/{id}")
+    suspend fun plan(@Path("id") id: Long): ApiEnvelope<PlanDto>
 
     @POST("api/v1/wifi/plans")
     suspend fun createPlan(@Body body: PlanUpsertRequest): ApiEnvelope<PlanDto>
 
     @PUT("api/v1/wifi/plans/{id}")
     suspend fun updatePlan(@Path("id") id: Long, @Body body: PlanUpsertRequest): ApiEnvelope<PlanDto>
+
+    @POST("api/v1/wifi/plans/{id}/owner-voucher")
+    suspend fun issueOwnerVoucher(
+        @Path("id") id: Long,
+        @Body body: OwnerVoucherRequest,
+    ): ApiEnvelope<VoucherDto>
 
     @DELETE("api/v1/wifi/plans/{id}")
     suspend fun deletePlan(@Path("id") id: Long): ApiEnvelope<Unit?>
@@ -73,6 +89,7 @@ interface WifiApi {
     suspend fun vouchers(
         @Query("q") q: String? = null,
         @Query("status") status: String? = null,
+        @Query("page") page: Int? = null,
     ): ApiEnvelope<PaginatedVouchers>
 
     @GET("api/v1/wifi/vouchers/{id}")

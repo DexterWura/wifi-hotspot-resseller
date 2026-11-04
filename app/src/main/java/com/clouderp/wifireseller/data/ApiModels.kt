@@ -1,8 +1,19 @@
 package com.clouderp.wifireseller.data
 
+import kotlinx.serialization.KSerializer
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.builtins.MapSerializer
+import kotlinx.serialization.builtins.serializer
+import kotlinx.serialization.descriptors.SerialDescriptor
+import kotlinx.serialization.encoding.Decoder
+import kotlinx.serialization.encoding.Encoder
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonDecoder
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.intOrNull
+import kotlinx.serialization.json.jsonPrimitive
 
 @Serializable
 data class ApiEnvelope<T>(
@@ -51,11 +62,15 @@ data class DashboardData(
     val earningsToday: List<MoneyTotal> = emptyList(),
     val earningsMonth: List<MoneyTotal> = emptyList(),
     val earningsAllTime: List<MoneyTotal> = emptyList(),
+    val salesByChannelToday: Map<String, List<MoneyTotal>> = emptyMap(),
+    val salesByChannelMonth: Map<String, List<MoneyTotal>> = emptyMap(),
     val activeVouchers: Int = 0,
     val pendingSync: Int = 0,
     val vouchersSoldToday: Int = 0,
     val vouchersSoldMonth: Int = 0,
     val sites: List<SiteSummary> = emptyList(),
+    @Serializable(with = StringIntMapSerializer::class)
+    val onlineBySite: Map<String, Int> = emptyMap(),
 )
 
 @Serializable
@@ -87,15 +102,26 @@ data class SiteDto(
     @SerialName("api_use_tls") val apiUseTls: Boolean = true,
     @SerialName("api_username") val apiUsername: String? = null,
     @SerialName("api_password_set") val apiPasswordSet: Boolean = false,
+    @SerialName("automatic_sync") val automaticSync: Boolean = false,
     @SerialName("is_active") val isActive: Boolean = true,
+    @SerialName("last_seen_at") val lastSeenAt: String? = null,
+    @SerialName("token_last_rotated_at") val tokenLastRotatedAt: String? = null,
     @SerialName("vouchers_count") val vouchersCount: Int? = null,
     @SerialName("sessions_count") val sessionsCount: Int? = null,
+    @SerialName("router_sync") val routerSync: RouterSyncResult? = null,
+)
+
+@Serializable
+data class RouterSyncResult(
+    val ok: Boolean = false,
+    val message: String? = null,
 )
 
 @Serializable
 data class SiteCreateResponse(
     val site: SiteDto,
     @SerialName("plain_token") val plainToken: String? = null,
+    @SerialName("router_sync") val routerSync: RouterSyncResult? = null,
 )
 
 @Serializable
@@ -103,6 +129,9 @@ data class SiteShowResponse(
     val site: SiteDto,
     @SerialName("sync_url") val syncUrl: String? = null,
     @SerialName("notice_url") val noticeUrl: String? = null,
+    @SerialName("walled_garden_hosts") val walledGardenHosts: List<String> = emptyList(),
+    @SerialName("router_script") val routerScript: String? = null,
+    @SerialName("login_html_snippet") val loginHtmlSnippet: String? = null,
 )
 
 @Serializable
@@ -134,7 +163,10 @@ data class PlanDto(
     @SerialName("shared_users") val sharedUsers: Int = 1,
     @SerialName("mikrotik_profile") val mikrotikProfile: String? = null,
     @SerialName("site_id") val siteId: Long? = null,
+    val site: NamedRef? = null,
     @SerialName("is_active") val isActive: Boolean = true,
+    @SerialName("is_sellable") val isSellable: Boolean = true,
+    @SerialName("time_mode") val timeMode: String? = null,
     @SerialName("sort_order") val sortOrder: Int = 0,
 )
 
@@ -148,6 +180,9 @@ data class PlansIndexData(
 @Serializable
 data class PaginatedPlans(
     val data: List<PlanDto> = emptyList(),
+    @SerialName("current_page") val currentPage: Int = 1,
+    @SerialName("last_page") val lastPage: Int = 1,
+    val total: Int = 0,
 )
 
 @Serializable
@@ -162,6 +197,8 @@ data class PlanUpsertRequest(
     val price: Double,
     @SerialName("currency_code") val currencyCode: String,
     @SerialName("duration_minutes") val durationMinutes: Int,
+    @SerialName("time_mode") val timeMode: String? = null,
+    @SerialName("is_owner_plan") val isOwnerPlan: Boolean = false,
     @SerialName("data_limit_bytes") val dataLimitBytes: Long? = null,
     @SerialName("rate_limit") val rateLimit: String? = null,
     @SerialName("shared_users") val sharedUsers: Int = 1,
@@ -169,6 +206,12 @@ data class PlanUpsertRequest(
     @SerialName("site_id") val siteId: Long? = null,
     @SerialName("is_active") val isActive: Boolean = true,
     @SerialName("sort_order") val sortOrder: Int = 0,
+)
+
+@Serializable
+data class OwnerVoucherRequest(
+    @SerialName("site_id") val siteId: Long,
+    @SerialName("guest_phone") val guestPhone: String? = null,
 )
 
 @Serializable
@@ -180,10 +223,22 @@ data class VoucherDto(
     val amount: Double = 0.0,
     @SerialName("currency_code") val currencyCode: String = "USD",
     @SerialName("guest_phone") val guestPhone: String? = null,
+    @SerialName("bytes_in") val bytesIn: Long? = null,
+    @SerialName("bytes_out") val bytesOut: Long? = null,
     @SerialName("activated_at") val activatedAt: String? = null,
     @SerialName("expires_at") val expiresAt: String? = null,
+    @SerialName("time_mode") val timeMode: String? = null,
+    @SerialName("sync_status") val syncStatus: String? = null,
+    @SerialName("removal_pending") val removalPending: Boolean = false,
     val site: NamedRef? = null,
     val plan: NamedRef? = null,
+    val issuer: IssuerRef? = null,
+)
+
+@Serializable
+data class IssuerRef(
+    val id: Long? = null,
+    val name: String? = null,
 )
 
 @Serializable
@@ -199,6 +254,8 @@ data class NamedRef(
 data class SellOptionsData(
     val sites: List<SiteSummary> = emptyList(),
     val plans: List<PlanDto> = emptyList(),
+    @SerialName("cash_issue_mode") val cashIssueMode: String? = null,
+    @SerialName("cash_show_qr") val cashShowQr: Boolean = true,
 )
 
 @Serializable
@@ -215,13 +272,26 @@ data class SettingsDto(
     @SerialName("paynow_integration_key_set") val paynowIntegrationKeySet: Boolean = false,
     @SerialName("paynow_configured") val paynowConfigured: Boolean = false,
     @SerialName("pesepay_enabled") val pesepayEnabled: Boolean = false,
+    @SerialName("pesepay_integration_key_set") val pesepayIntegrationKeySet: Boolean = false,
+    @SerialName("pesepay_encryption_key_set") val pesepayEncryptionKeySet: Boolean = false,
     @SerialName("pesepay_configured") val pesepayConfigured: Boolean = false,
     @SerialName("ecocash_enabled") val ecocashEnabled: Boolean = false,
+    @SerialName("ecocash_username_set") val ecocashUsernameSet: Boolean = false,
+    @SerialName("ecocash_password_set") val ecocashPasswordSet: Boolean = false,
+    @SerialName("ecocash_merchant_code") val ecocashMerchantCode: String? = null,
+    @SerialName("ecocash_merchant_pin_set") val ecocashMerchantPinSet: Boolean = false,
+    @SerialName("ecocash_merchant_number") val ecocashMerchantNumber: String? = null,
+    @SerialName("ecocash_base_url") val ecocashBaseUrl: String? = null,
+    @SerialName("ecocash_merchant_name") val ecocashMerchantName: String? = null,
+    @SerialName("ecocash_terminal_id") val ecocashTerminalId: String? = null,
+    @SerialName("ecocash_location") val ecocashLocation: String? = null,
     @SerialName("ecocash_configured") val ecocashConfigured: Boolean = false,
     @SerialName("guest_browser_notices_enabled") val guestBrowserNoticesEnabled: Boolean = true,
     @SerialName("guest_sms_warnings_enabled") val guestSmsWarningsEnabled: Boolean = false,
     @SerialName("guest_warning_percent") val guestWarningPercent: Int = 80,
     @SerialName("guest_expiry_warn_minutes") val guestExpiryWarnMinutes: Int = 15,
+    @SerialName("cash_issue_mode") val cashIssueMode: String = "preview",
+    @SerialName("cash_show_qr") val cashShowQr: Boolean = true,
 )
 
 @Serializable
@@ -230,19 +300,24 @@ data class SettingsUpdateRequest(
     @SerialName("paynow_integration_id") val paynowIntegrationId: String? = null,
     @SerialName("paynow_integration_key") val paynowIntegrationKey: String? = null,
     @SerialName("pesepay_enabled") val pesepayEnabled: Boolean? = null,
+    @SerialName("pesepay_integration_key") val pesepayIntegrationKey: String? = null,
+    @SerialName("pesepay_encryption_key") val pesepayEncryptionKey: String? = null,
     @SerialName("ecocash_enabled") val ecocashEnabled: Boolean? = null,
+    @SerialName("ecocash_username") val ecocashUsername: String? = null,
+    @SerialName("ecocash_password") val ecocashPassword: String? = null,
+    @SerialName("ecocash_merchant_code") val ecocashMerchantCode: String? = null,
+    @SerialName("ecocash_merchant_pin") val ecocashMerchantPin: String? = null,
+    @SerialName("ecocash_merchant_number") val ecocashMerchantNumber: String? = null,
+    @SerialName("ecocash_base_url") val ecocashBaseUrl: String? = null,
+    @SerialName("ecocash_merchant_name") val ecocashMerchantName: String? = null,
+    @SerialName("ecocash_terminal_id") val ecocashTerminalId: String? = null,
+    @SerialName("ecocash_location") val ecocashLocation: String? = null,
     @SerialName("guest_browser_notices_enabled") val guestBrowserNoticesEnabled: Boolean? = null,
     @SerialName("guest_sms_warnings_enabled") val guestSmsWarningsEnabled: Boolean? = null,
     @SerialName("guest_warning_percent") val guestWarningPercent: Int? = null,
     @SerialName("guest_expiry_warn_minutes") val guestExpiryWarnMinutes: Int? = null,
-)
-
-@Serializable
-data class PaginatedCompanies(
-    val data: List<CompanyDto> = emptyList(),
-    @SerialName("current_page") val currentPage: Int = 1,
-    @SerialName("last_page") val lastPage: Int = 1,
-    val total: Int = 0,
+    @SerialName("cash_issue_mode") val cashIssueMode: String,
+    @SerialName("cash_show_qr") val cashShowQr: Boolean? = null,
 )
 
 @Serializable
@@ -265,14 +340,31 @@ data class PaginatedVouchers(
 data class SalesData(
     val from: String? = null,
     val to: String? = null,
+    val siteId: Long? = null,
+    val channel: String? = null,
     val totals: List<MoneyTotal> = emptyList(),
+    val byChannel: Map<String, List<MoneyTotal>> = emptyMap(),
+    val bySite: List<SiteEarnings> = emptyList(),
     @SerialName("voucherCount") val voucherCount: Int = 0,
     val rows: SalesRows? = null,
+    val sites: List<SiteSummary> = emptyList(),
+    val channels: Map<String, String> = emptyMap(),
+)
+
+@Serializable
+data class SiteEarnings(
+    @SerialName("site_id") val siteId: Long? = null,
+    @SerialName("site_name") val siteName: String = "",
+    @SerialName("currency_code") val currencyCode: String = "USD",
+    val total: Double = 0.0,
+    val count: Int = 0,
 )
 
 @Serializable
 data class SalesRows(
     val data: List<VoucherDto> = emptyList(),
+    @SerialName("current_page") val currentPage: Int = 1,
+    @SerialName("last_page") val lastPage: Int = 1,
     val total: Int = 0,
 )
 
@@ -339,3 +431,27 @@ data class LivePlanRef(
     @SerialName("data_limit_label") val dataLimitLabel: String? = null,
     @SerialName("duration_label") val durationLabel: String? = null,
 )
+
+@Serializable
+data class MessageData(
+    val ok: Boolean? = null,
+    val message: String? = null,
+)
+
+object StringIntMapSerializer : KSerializer<Map<String, Int>> {
+    private val delegate = MapSerializer(String.serializer(), Int.serializer())
+    override val descriptor: SerialDescriptor = delegate.descriptor
+
+    override fun deserialize(decoder: Decoder): Map<String, Int> {
+        val json = decoder as? JsonDecoder ?: return decoder.decodeSerializableValue(delegate)
+        return when (val element = json.decodeJsonElement()) {
+            is JsonObject -> element.mapValues { it.value.jsonPrimitive.intOrNull ?: 0 }
+            is JsonArray -> emptyMap()
+            else -> emptyMap()
+        }
+    }
+
+    override fun serialize(encoder: Encoder, value: Map<String, Int>) {
+        encoder.encodeSerializableValue(delegate, value)
+    }
+}

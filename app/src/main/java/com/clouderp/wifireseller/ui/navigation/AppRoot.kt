@@ -2,14 +2,10 @@ package com.clouderp.wifireseller.ui.navigation
 
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Dashboard
-import androidx.compose.material.icons.filled.Place
+import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.QrCode
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.ShoppingCart
-import androidx.compose.material.icons.filled.Speed
-import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -32,11 +28,13 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.clouderp.wifireseller.data.SessionStore
+import com.clouderp.wifireseller.data.ThemePreference
+import com.clouderp.wifireseller.data.ThemeStore
 import com.clouderp.wifireseller.data.WifiRepository
-import com.clouderp.wifireseller.ui.screens.CompanyPickerScreen
 import com.clouderp.wifireseller.ui.screens.DashboardScreen
 import com.clouderp.wifireseller.ui.screens.LiveMonitorScreen
 import com.clouderp.wifireseller.ui.screens.LoginScreen
+import com.clouderp.wifireseller.ui.screens.MoreScreen
 import com.clouderp.wifireseller.ui.screens.PlanFormScreen
 import com.clouderp.wifireseller.ui.screens.PlansScreen
 import com.clouderp.wifireseller.ui.screens.SalesScreen
@@ -51,7 +49,6 @@ import kotlinx.coroutines.launch
 
 object Routes {
     const val Login = "login"
-    const val Companies = "companies"
     const val Home = "home"
     const val Dashboard = "dashboard"
     const val Live = "live"
@@ -67,6 +64,7 @@ object Routes {
     const val Vouchers = "vouchers"
     const val VoucherDetail = "vouchers/{id}"
     const val Settings = "settings"
+    const val More = "more"
 }
 
 data class TabItem(
@@ -80,6 +78,8 @@ data class TabItem(
 fun AppRoot(
     repository: WifiRepository,
     sessionStore: SessionStore,
+    themeStore: ThemeStore,
+    themePreference: ThemePreference,
     onAuthChanged: (String?, String?) -> Unit,
 ) {
     val session by sessionStore.session.collectAsState(
@@ -92,6 +92,14 @@ fun AppRoot(
 
     LaunchedEffect(session.token, session.companyUuid) {
         onAuthChanged(session.token, session.companyUuid)
+        if (!session.token.isNullOrBlank() && session.companyUuid.isNullOrBlank()) {
+            runCatching { repository.bindWorkspace() }
+                .onFailure {
+                    bootError = it.message
+                    repository.logout()
+                }
+            return@LaunchedEffect
+        }
         if (!session.token.isNullOrBlank() && !session.companyUuid.isNullOrBlank()) {
             runCatching { repository.bootstrap() }
                 .onSuccess { permissions = it.permissions.toSet(); bootError = null }
@@ -104,7 +112,7 @@ fun AppRoot(
     LaunchedEffect(session.isLoggedIn, session.hasCompany) {
         val target = when {
             !session.isLoggedIn -> Routes.Login
-            !session.hasCompany -> Routes.Companies
+            !session.hasCompany -> Routes.Login
             else -> Routes.Home
         }
         val current = navController.currentDestination?.route
@@ -120,37 +128,23 @@ fun AppRoot(
         composable(Routes.Login) {
             LoginScreen(
                 onLoggedIn = {
-                    navController.navigate(Routes.Companies) {
+                    navController.navigate(Routes.Home) {
                         popUpTo(Routes.Login) { inclusive = true }
                     }
                 },
                 repository = repository,
             )
         }
-        composable(Routes.Companies) {
-            CompanyPickerScreen(
-                repository = repository,
-                onPicked = {
-                    navController.navigate(Routes.Home) {
-                        popUpTo(Routes.Companies) { inclusive = true }
-                    }
-                },
-                onLogout = {
-                    scope.launch {
-                        repository.logout()
-                        navController.navigate(Routes.Login) {
-                            popUpTo(0) { inclusive = true }
-                        }
-                    }
-                },
-            )
-        }
         composable(Routes.Home) {
             HomeShell(
                 permissions = permissions,
                 companyName = session.companyName ?: "Workspace",
+                userName = session.userName,
+                userEmail = session.userEmail,
                 bootError = bootError,
                 repository = repository,
+                themePreference = themePreference,
+                onThemeChange = { scope.launch { themeStore.setPreference(it) } },
                 onLogout = {
                     scope.launch {
                         repository.logout()
@@ -168,40 +162,59 @@ fun AppRoot(
 private fun HomeShell(
     permissions: Set<String>,
     companyName: String,
+    userName: String?,
+    userEmail: String?,
     bootError: String?,
     repository: WifiRepository,
+    themePreference: ThemePreference,
+    onThemeChange: (ThemePreference) -> Unit,
     onLogout: () -> Unit,
 ) {
     val tabs = listOf(
         TabItem(Routes.Dashboard, "Home", "wifi.dashboard.view", Icons.Default.Dashboard),
-        TabItem(Routes.Live, "Live", "wifi.live.view", Icons.Default.Speed),
-        TabItem(Routes.Sell, "Sell", "wifi.vouchers.sell", Icons.Default.ShoppingCart),
+        TabItem(Routes.Sell, "Till", "wifi.vouchers.sell", Icons.Default.ShoppingCart),
         TabItem(Routes.Vouchers, "Codes", "wifi.vouchers.view", Icons.Default.QrCode),
-        TabItem(Routes.Sites, "Sites", "wifi.sites.manage", Icons.Default.Place),
-        TabItem(Routes.Plans, "Plans", "wifi.plans.manage", Icons.Default.Wifi),
-        TabItem(Routes.Sales, "Sales", "wifi.dashboard.view", Icons.AutoMirrored.Filled.List),
-        TabItem(Routes.Settings, "Settings", "wifi.settings.manage", Icons.Default.Settings),
+        TabItem(Routes.More, "More", null, Icons.Default.MoreHoriz),
     ).filter { it.permission == null || permissions.contains(it.permission) }
 
     val navController = rememberNavController()
-    val start = tabs.firstOrNull()?.route ?: Routes.Dashboard
+    val start = tabs.firstOrNull()?.route ?: Routes.More
     val backStack by navController.currentBackStackEntryAsState()
     val current = backStack?.destination?.route ?: start
+
+    fun selected(tab: String): Boolean = when (tab) {
+        Routes.Dashboard -> current == Routes.Dashboard
+        Routes.Sell -> current == Routes.Sell
+        Routes.Vouchers -> current.startsWith("vouchers")
+        Routes.More -> current == Routes.More ||
+            current.startsWith("sites") ||
+            current.startsWith("plans") ||
+            current == Routes.Live ||
+            current == Routes.Sales ||
+            current == Routes.Settings
+        else -> current == tab
+    }
 
     Scaffold(
         bottomBar = {
             if (tabs.isNotEmpty()) {
                 NavigationBar {
-                    tabs.take(5).forEach { tab ->
+                    tabs.forEach { tab ->
                         NavigationBarItem(
-                            selected = current.startsWith(tab.route.substringBefore('/')),
+                            selected = selected(tab.route),
                             onClick = {
-                                navController.navigate(tab.route) {
-                                    popUpTo(navController.graph.findStartDestination().id) {
-                                        saveState = true
+                                val atRoot = current == tab.route
+                                if (!atRoot) {
+                                    val popped = navController.popBackStack(tab.route, inclusive = false)
+                                    if (!popped) {
+                                        navController.navigate(tab.route) {
+                                            popUpTo(navController.graph.findStartDestination().id) {
+                                                saveState = false
+                                            }
+                                            launchSingleTop = true
+                                            restoreState = false
+                                        }
                                     }
-                                    launchSingleTop = true
-                                    restoreState = true
                                 }
                             },
                             icon = { Icon(tab.icon, contentDescription = tab.label) },
@@ -224,11 +237,8 @@ private fun HomeShell(
                     bootError = bootError,
                     canOpenLive = permissions.contains("wifi.live.view"),
                     canOpenSales = permissions.contains("wifi.dashboard.view"),
-                    canOpenSettings = permissions.contains("wifi.settings.manage"),
                     onOpenLive = { navController.navigate(Routes.Live) },
                     onOpenSales = { navController.navigate(Routes.Sales) },
-                    onOpenSettings = { navController.navigate(Routes.Settings) },
-                    onLogout = onLogout,
                 )
             }
             composable(Routes.Live) {
@@ -285,6 +295,12 @@ private fun HomeShell(
                     repository = repository,
                     planId = null,
                     onDone = { navController.popBackStack() },
+                    onOpenPlan = { id ->
+                        navController.navigate("plans/$id/edit") {
+                            popUpTo(Routes.PlanCreate) { inclusive = true }
+                        }
+                    },
+                    onIssued = { voucher -> navController.navigate("vouchers/${voucher.id}") },
                 )
             }
             composable(
@@ -295,10 +311,18 @@ private fun HomeShell(
                     repository = repository,
                     planId = entry.arguments?.getLong("id"),
                     onDone = { navController.popBackStack() },
+                    onOpenPlan = { id -> navController.navigate("plans/$id/edit") },
+                    onIssued = { voucher -> navController.navigate("vouchers/${voucher.id}") },
                 )
             }
             composable(Routes.Sell) {
-                SellScreen(repository = repository)
+                SellScreen(
+                    repository = repository,
+                    canOpenSites = permissions.contains("wifi.sites.manage"),
+                    canOpenPlans = permissions.contains("wifi.plans.manage"),
+                    onOpenSites = { navController.navigate(Routes.Sites) },
+                    onOpenPlans = { navController.navigate(Routes.Plans) },
+                )
             }
             composable(Routes.Vouchers) {
                 VouchersScreen(
@@ -319,6 +343,26 @@ private fun HomeShell(
             }
             composable(Routes.Settings) {
                 SettingsScreen(repository = repository)
+            }
+            composable(Routes.More) {
+                MoreScreen(
+                    companyName = companyName,
+                    userName = userName,
+                    userEmail = userEmail,
+                    canOpenLive = permissions.contains("wifi.live.view"),
+                    canOpenSales = permissions.contains("wifi.dashboard.view"),
+                    canOpenSites = permissions.contains("wifi.sites.manage"),
+                    canOpenPlans = permissions.contains("wifi.plans.manage"),
+                    canOpenSettings = permissions.contains("wifi.settings.manage"),
+                    themePreference = themePreference,
+                    onThemeChange = onThemeChange,
+                    onOpenLive = { navController.navigate(Routes.Live) },
+                    onOpenSales = { navController.navigate(Routes.Sales) },
+                    onOpenSites = { navController.navigate(Routes.Sites) },
+                    onOpenPlans = { navController.navigate(Routes.Plans) },
+                    onOpenSettings = { navController.navigate(Routes.Settings) },
+                    onLogout = onLogout,
+                )
             }
         }
     }

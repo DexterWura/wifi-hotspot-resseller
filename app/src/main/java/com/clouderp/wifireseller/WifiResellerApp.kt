@@ -3,6 +3,7 @@ package com.clouderp.wifireseller
 import android.app.Application
 import com.clouderp.wifireseller.data.ApiClient
 import com.clouderp.wifireseller.data.SessionStore
+import com.clouderp.wifireseller.data.ThemeStore
 import com.clouderp.wifireseller.data.WifiRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
@@ -10,6 +11,8 @@ import kotlinx.coroutines.runBlocking
 
 class WifiResellerApp : Application() {
     lateinit var sessionStore: SessionStore
+        private set
+    lateinit var themeStore: ThemeStore
         private set
     lateinit var repository: WifiRepository
         private set
@@ -20,6 +23,7 @@ class WifiResellerApp : Application() {
     override fun onCreate() {
         super.onCreate()
         sessionStore = SessionStore(this)
+        themeStore = ThemeStore(this)
         runBlocking {
             val snap = sessionStore.session.first()
             tokenState.value = snap.token

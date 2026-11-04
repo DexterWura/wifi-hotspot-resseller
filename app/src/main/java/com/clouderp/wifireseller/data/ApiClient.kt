@@ -8,6 +8,7 @@ import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
 
 class ApiClient(
     private val tokenProvider: () -> String?,
@@ -19,16 +20,32 @@ class ApiClient(
         coerceInputValues = true
     }
 
+    private val tokenOverride = AtomicReference<String?>(null)
+    private val companyOverride = AtomicReference<String?>(null)
+
+    fun syncAuth(token: String?, companyUuid: String?) {
+        tokenOverride.set(token)
+        companyOverride.set(companyUuid)
+    }
+
+    fun syncCompany(companyUuid: String?) {
+        companyOverride.set(companyUuid)
+    }
+
+    private fun currentToken(): String? = tokenOverride.get() ?: tokenProvider()
+
+    private fun currentCompany(): String? = companyOverride.get() ?: companyProvider()
+
     private val client = OkHttpClient.Builder()
         .connectTimeout(30, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
         .addInterceptor { chain ->
             val builder = chain.request().newBuilder()
                 .header("Accept", "application/json")
-            tokenProvider()?.takeIf { it.isNotBlank() }?.let {
+            currentToken()?.takeIf { it.isNotBlank() }?.let {
                 builder.header("Authorization", "Bearer $it")
             }
-            companyProvider()?.takeIf { it.isNotBlank() }?.let {
+            currentCompany()?.takeIf { it.isNotBlank() }?.let {
                 builder.header("X-Company-Id", it)
             }
             chain.proceed(builder.build())

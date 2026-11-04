@@ -12,7 +12,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -29,14 +28,28 @@ import com.clouderp.wifireseller.data.LiveMonitorData
 import com.clouderp.wifireseller.data.MoneyTotal
 import com.clouderp.wifireseller.data.SalesData
 import com.clouderp.wifireseller.data.WifiRepository
+import com.clouderp.wifireseller.data.channelLabel
+import com.clouderp.wifireseller.data.formatIso
+import com.clouderp.wifireseller.data.money
+import com.clouderp.wifireseller.data.moneyLines
+import com.clouderp.wifireseller.ui.components.AppTextField
+import com.clouderp.wifireseller.ui.components.ChoiceChip
+import com.clouderp.wifireseller.ui.components.DetailRow
 import com.clouderp.wifireseller.ui.components.ErrorText
+import com.clouderp.wifireseller.ui.components.GhostButton
 import com.clouderp.wifireseller.ui.components.LoadingBox
+import com.clouderp.wifireseller.ui.components.MetaText
 import com.clouderp.wifireseller.ui.components.PrimaryButton
+import com.clouderp.wifireseller.ui.components.SecondaryButton
+import com.clouderp.wifireseller.ui.components.SectionLabel
 import com.clouderp.wifireseller.ui.components.SectionTitle
 import com.clouderp.wifireseller.ui.components.SoftCard
+import com.clouderp.wifireseller.ui.components.StatCard
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+
+private val ChannelKeys = listOf("cash", "paynow", "pesepay", "ecocash")
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -46,29 +59,27 @@ fun DashboardScreen(
     bootError: String?,
     canOpenLive: Boolean,
     canOpenSales: Boolean,
-    canOpenSettings: Boolean,
     onOpenLive: () -> Unit,
     onOpenSales: () -> Unit,
-    onOpenSettings: () -> Unit,
-    onLogout: () -> Unit,
 ) {
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
     var data by remember { mutableStateOf<DashboardData?>(null) }
 
-    LaunchedEffect(Unit) {
+    fun load() {
+        loading = true
+        error = null
+    }
+
+    LaunchedEffect(loading) {
+        if (!loading) return@LaunchedEffect
         runCatching { repository.dashboard() }
             .onSuccess { data = it; loading = false }
             .onFailure { error = it.message; loading = false }
     }
 
     Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(companyName) },
-                actions = { TextButton(onClick = onLogout) { Text("Logout") } },
-            )
-        },
+        topBar = { TopAppBar(title = { Text(companyName) }) },
     ) { padding ->
         when {
             loading -> LoadingBox()
@@ -82,24 +93,59 @@ fun DashboardScreen(
             ) {
                 ErrorText(bootError)
                 ErrorText(error)
-                SoftCard {
-                    SectionTitle("Today")
-                    MoneyLines(data?.earningsToday.orEmpty())
-                    Text("Vouchers sold: ${data?.vouchersSoldToday ?: 0}")
+                if (error != null) SecondaryButton("Retry", onClick = { load() })
+                MetaText("Sell guest Wi-Fi, issue owner codes, and sync hotspot users to MikroTik.")
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    StatCard("Earned today", moneyLines(data?.earningsToday.orEmpty()), Modifier.weight(1f))
+                    StatCard("This month", moneyLines(data?.earningsMonth.orEmpty()), Modifier.weight(1f))
+                }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    StatCard("Sold today", (data?.vouchersSoldToday ?: 0).toString(), Modifier.weight(1f))
+                    StatCard("Active vouchers", (data?.activeVouchers ?: 0).toString(), Modifier.weight(1f))
+                }
+                MetaText("Pending router sync: ${data?.pendingSync ?: 0} · Sold this month: ${data?.vouchersSoldMonth ?: 0}")
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (canOpenSales) {
+                        androidx.compose.foundation.layout.Box(Modifier.weight(1f)) {
+                            SecondaryButton("Sales report", onClick = onOpenSales)
+                        }
+                    }
+                    if (canOpenLive) {
+                        androidx.compose.foundation.layout.Box(Modifier.weight(1f)) {
+                            SecondaryButton("Live monitor", onClick = onOpenLive)
+                        }
+                    }
                 }
                 SoftCard {
-                    SectionTitle("This month")
-                    MoneyLines(data?.earningsMonth.orEmpty())
-                    Text("Vouchers sold: ${data?.vouchersSoldMonth ?: 0}")
+                    SectionLabel("Earnings today by channel")
+                    ChannelKeys.forEach { key ->
+                        val rows = data?.salesByChannelToday?.get(key).orEmpty()
+                        DetailRow(channelLabel(key), moneyLines(rows))
+                    }
                 }
                 SoftCard {
-                    SectionTitle("Live")
-                    Text("Active vouchers: ${data?.activeVouchers ?: 0}")
-                    Text("Pending sync: ${data?.pendingSync ?: 0}")
+                    SectionLabel("All-time earnings")
+                    val allTime = data?.earningsAllTime.orEmpty()
+                    if (allTime.isEmpty()) {
+                        MetaText("No sales yet. Cash and guest payments will show here.")
+                    } else {
+                        allTime.forEach { row ->
+                            DetailRow(row.currencyCode, "${money(row.currencyCode, row.total)} · ${row.count}")
+                        }
+                    }
                 }
-                if (canOpenLive) PrimaryButton("Live monitor", onClick = onOpenLive)
-                if (canOpenSales) PrimaryButton("Sales report", onClick = onOpenSales)
-                if (canOpenSettings) PrimaryButton("Settings", onClick = onOpenSettings)
+                SoftCard {
+                    SectionLabel("Sites")
+                    val sites = data?.sites.orEmpty()
+                    if (sites.isEmpty()) {
+                        MetaText("Add a MikroTik hotspot site to start selling.")
+                    } else {
+                        sites.forEach { site ->
+                            val online = data?.onlineBySite?.get(site.id.toString()) ?: 0
+                            DetailRow(site.name, "$online online · ${formatIso(site.lastSeenAt).let { if (it == "—") "Never" else it }}")
+                        }
+                    }
+                }
             }
         }
     }
@@ -142,14 +188,12 @@ fun LiveMonitorScreen(repository: WifiRepository) {
             TopAppBar(
                 title = { Text("Live monitor") },
                 actions = {
-                    TextButton(
+                    GhostButton(
+                        if (refreshing) "Refreshing..." else "Refresh routers",
                         enabled = !refreshing,
-                        onClick = {
-                            refreshing = true
-                            scope.launch { load(true) }
-                        },
                     ) {
-                        Text(if (refreshing) "Refreshing..." else "Refresh routers")
+                        refreshing = true
+                        scope.launch { load(true) }
                     }
                 },
             )
@@ -166,13 +210,10 @@ fun LiveMonitorScreen(repository: WifiRepository) {
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 ErrorText(error)
-                Text(
-                    "Updated ${data?.refreshedAt ?: "-"}",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                MetaText("Updated ${formatIso(data?.refreshedAt)}")
                 SoftCard {
                     SectionTitle("Right now")
-                    Text("Connected: ${data?.connectedCount ?: 0}", fontWeight = FontWeight.Bold)
+                    Text("Connected: ${data?.connectedCount ?: 0}", fontWeight = FontWeight.SemiBold)
                     Text("Combined speed: ${data?.totalRateLabel ?: "0 kbps"}")
                     Text("Data transferred: ${data?.totalBytesLabel ?: "0 B"}")
                     Text("Active vouchers: ${data?.activeVouchers ?: 0}")
@@ -181,24 +222,10 @@ fun LiveMonitorScreen(repository: WifiRepository) {
                     SectionTitle("By site")
                     val sites = data?.sites.orEmpty()
                     if (sites.isEmpty()) {
-                        Text("No guests connected.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        MetaText("No guests connected.")
                     } else {
                         sites.forEach { site ->
-                            Row(
-                                Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 4.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                            ) {
-                                Column {
-                                    Text(site.name, fontWeight = FontWeight.Medium)
-                                    Text(
-                                        "${site.connected} online",
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                }
-                                Text("${site.totalRateBps / 1000} kbps")
-                            }
+                            DetailRow(site.name, "${site.connected} online · ${site.totalRateBps / 1000} kbps")
                         }
                     }
                 }
@@ -206,26 +233,20 @@ fun LiveMonitorScreen(repository: WifiRepository) {
                 val sessions = data?.sessions.orEmpty()
                 if (sessions.isEmpty()) {
                     SoftCard {
-                        Text(
-                            "No hotspot sessions reported yet. Routers push on sync, or tap Refresh routers if API credentials are set.",
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
+                        MetaText("No hotspot sessions reported yet. Routers push on sync, or tap Refresh routers if API credentials are set.")
                     }
                 } else {
                     sessions.forEach { session ->
                         SoftCard {
                             Text(session.username, fontWeight = FontWeight.Bold)
                             Text(session.site?.name ?: "Site")
-                            Text("IP ${session.ipAddress ?: "-"} · MAC ${session.macAddress ?: "-"}")
-                            Text("Uptime ${session.uptime ?: "-"} · Idle ${session.idleTime ?: "-"}")
+                            MetaText("IP ${session.ipAddress ?: "—"} · MAC ${session.macAddress ?: "—"}")
+                            MetaText("Uptime ${session.uptime ?: "—"} · Idle ${session.idleTime ?: "—"}")
                             Text("Speed ${session.rateLabel} · Data ${session.bytesTotalLabel}")
                             val planName = session.plan?.name
                             val planLimit = session.plan?.rateLimit ?: session.plan?.dataLimitLabel
                             if (!planName.isNullOrBlank() || !planLimit.isNullOrBlank()) {
-                                Text(
-                                    listOfNotNull(planName, planLimit).joinToString(" · "),
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
+                                MetaText(listOfNotNull(planName, planLimit).joinToString(" · "))
                             }
                             if (session.isStale) {
                                 Text("Stale report", color = MaterialTheme.colorScheme.error)
@@ -238,58 +259,121 @@ fun LiveMonitorScreen(repository: WifiRepository) {
     }
 }
 
-@Composable
-private fun MoneyLines(rows: List<MoneyTotal>) {
-    if (rows.isEmpty()) {
-        Text("No sales yet", color = MaterialTheme.colorScheme.onSurfaceVariant)
-    } else {
-        rows.forEach {
-            Text(
-                "${it.currencyCode} ${"%.2f".format(it.total)} (${it.count})",
-                fontWeight = FontWeight.Medium,
-            )
-        }
-    }
-}
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SalesScreen(repository: WifiRepository) {
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
     var data by remember { mutableStateOf<SalesData?>(null) }
+    var from by remember { mutableStateOf("") }
+    var to by remember { mutableStateOf("") }
+    var siteId by remember { mutableStateOf<Long?>(null) }
+    var channel by remember { mutableStateOf<String?>(null) }
+    var page by remember { mutableStateOf(1) }
+    val scope = rememberCoroutineScope()
 
-    LaunchedEffect(Unit) {
-        runCatching { repository.sales() }
-            .onSuccess { data = it; loading = false }
-            .onFailure { error = it.message; loading = false }
+    fun load(nextPage: Int = 1) {
+        scope.launch {
+            loading = true
+            error = null
+            runCatching {
+                repository.sales(
+                    from = from.ifBlank { null },
+                    to = to.ifBlank { null },
+                    siteId = siteId,
+                    channel = channel,
+                    page = nextPage,
+                )
+            }.onSuccess {
+                if (nextPage > 1 && data != null) {
+                    val previous = data!!.rows?.data.orEmpty()
+                    data = it.copy(rows = it.rows?.copy(data = previous + it.rows.data))
+                } else {
+                    data = it
+                    if (from.isBlank()) from = it.from.orEmpty()
+                    if (to.isBlank()) to = it.to.orEmpty()
+                }
+                page = nextPage
+                loading = false
+            }.onFailure { error = it.message; loading = false }
+        }
     }
 
+    LaunchedEffect(Unit) { load() }
+
     Scaffold(topBar = { TopAppBar(title = { Text("Sales") }) }) { padding ->
-        when {
-            loading -> LoadingBox()
-            else -> Column(
-                Modifier
-                    .padding(padding)
-                    .padding(16.dp)
-                    .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                ErrorText(error)
-                Text("From ${data?.from ?: "-"} to ${data?.to ?: "-"}")
+        Column(
+            Modifier
+                .padding(padding)
+                .padding(16.dp)
+                .verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            ErrorText(error)
+            AppTextField(from, { from = it }, "From (YYYY-MM-DD)")
+            AppTextField(to, { to = it }, "To (YYYY-MM-DD)")
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                ChoiceChip("All sites", siteId == null) { siteId = null }
+                data?.sites.orEmpty().forEach { site ->
+                    ChoiceChip(site.name, siteId == site.id) { siteId = site.id }
+                }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                ChoiceChip("All channels", channel == null) { channel = null }
+                (data?.channels?.keys ?: ChannelKeys).forEach { key ->
+                    ChoiceChip(data?.channels?.get(key) ?: channelLabel(key), channel == key) { channel = key }
+                }
+            }
+            PrimaryButton("Apply filters", enabled = !loading) { load(1) }
+            if (loading && data == null) {
+                LoadingBox()
+            } else {
+                Text("From ${data?.from ?: "—"} to ${data?.to ?: "—"}", style = MaterialTheme.typography.bodyMedium)
                 SoftCard {
                     SectionTitle("Totals")
                     MoneyLines(data?.totals.orEmpty())
                     Text("Vouchers: ${data?.voucherCount ?: 0}")
                 }
-                data?.rows?.data.orEmpty().forEach { row ->
-                    SoftCard {
-                        Text(row.code, fontWeight = FontWeight.Bold)
-                        Text("${row.channel} · ${row.currencyCode} ${"%.2f".format(row.amount)}")
-                        Text(row.site?.name ?: "Site", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                SoftCard {
+                    SectionLabel("By channel")
+                    ChannelKeys.forEach { key ->
+                        DetailRow(channelLabel(key), moneyLines(data?.byChannel?.get(key).orEmpty()))
                     }
                 }
+                SoftCard {
+                    SectionLabel("By site")
+                    val bySite = data?.bySite.orEmpty()
+                    if (bySite.isEmpty()) MetaText("No site totals for this range.")
+                    else bySite.forEach { row ->
+                        DetailRow(row.siteName, "${money(row.currencyCode, row.total)} · ${row.count}")
+                    }
+                }
+                data?.rows?.data.orEmpty().forEach { row ->
+                    SoftCard {
+                        Text(row.code, fontWeight = FontWeight.Bold, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
+                        Text("${channelLabel(row.channel)} · ${money(row.currencyCode, row.amount)}")
+                        MetaText(listOfNotNull(row.site?.name, row.plan?.name).joinToString(" · "))
+                    }
+                }
+                val lastPage = data?.rows?.lastPage ?: 1
+                if (page < lastPage) {
+                    SecondaryButton(if (loading) "Loading..." else "Load more", enabled = !loading) { load(page + 1) }
+                }
             }
+        }
+    }
+}
+
+@Composable
+private fun MoneyLines(rows: List<MoneyTotal>) {
+    if (rows.isEmpty()) {
+        MetaText("No sales yet")
+    } else {
+        rows.forEach {
+            Text(
+                "${money(it.currencyCode, it.total)} (${it.count})",
+                fontWeight = FontWeight.Medium,
+            )
         }
     }
 }
